@@ -1,0 +1,38 @@
+name: Update Mutuals Banner
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs every day at UTC 00:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install requests Pillow
+
+      - name: Run Banner Generator
+        env:
+          OSU_CLIENT_ID: ${{ secrets.OSU_CLIENT_ID }}
+          OSU_CLIENT_SECRET: ${{ secrets.OSU_CLIENT_SECRET }}
+          MUTUALS: ${{ secrets.MUTUALS }}
+        run: python main.py
+
+      - name: Commit and Push Image if Changed
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add mutuals.png
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update mutuals banner [skip ci]" && git push)
