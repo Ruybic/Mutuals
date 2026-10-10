@@ -31,6 +31,7 @@ jobs:
         run: python main.py
 
       - name: Commit and Push Image if Changed
+        if: hashFiles('mutuals.png') != ''
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
