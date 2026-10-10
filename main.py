@@ -6,8 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 # --- Configuration & Credentials ---
 CLIENT_ID = os.getenv("OSU_CLIENT_ID")
 CLIENT_SECRET = os.getenv("OSU_CLIENT_SECRET")
-# Comma-separated list of your mutual usernames or IDs
-MUTUALS_RAW = os.getenv("MUTUALS", "peppy,FlyTuna") 
+MUTUALS_RAW = os.getenv("MUTUALS", "") 
 MUTUALS = [m.strip() for m in MUTUALS_RAW.split(",") if m.strip()]
 
 # Layout Configuration
@@ -16,16 +15,16 @@ CARD_WIDTH = 380
 CARD_HEIGHT = 90
 PADDING = 12
 HEADER_HEIGHT = 60
-BG_COLOR = (24, 20, 28, 255)         # Dark sleek osu! background
-CARD_BG = (35, 30, 42, 255)           # Card background
-TEXT_MAIN = (255, 255, 255, 255)      # White
-TEXT_MUTED = (160, 150, 175, 255)     # Muted grey-purple
+BG_COLOR = (24, 20, 28, 255)         
+CARD_BG = (35, 30, 42, 255)           
+TEXT_MAIN = (255, 255, 255, 255)      
+TEXT_MUTED = (160, 150, 175, 255)     
 
 MODE_COLORS = {
-    "osu": (232, 91, 131, 255),       # Standard - Pink/Red
-    "taiko": (235, 71, 71, 255),      # Taiko - Red/Orange
-    "fruits": (46, 189, 89, 255),     # Catch - Green
-    "mania": (43, 141, 237, 255)      # Mania - Blue
+    "osu": (232, 91, 131, 255),       
+    "taiko": (235, 71, 71, 255),      
+    "fruits": (46, 189, 89, 255),     
+    "mania": (43, 141, 237, 255)      
 }
 
 def get_osu_token():
@@ -39,9 +38,13 @@ def get_osu_token():
     response = requests.post(url, data=data)
     return response.json().get("access_token")
 
-def fetch_user_data(username, token):
+def fetch_user_data(identifier, token):
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"}
-    url = f"https://osu.ppy.sh/api/v2/users/{username}"
+    
+    # osu! API v2 requires '@' prefix for username lookups
+    lookup_id = identifier if identifier.isdigit() else f"@{identifier}"
+    url = f"https://osu.ppy.sh/api/v2/users/{lookup_id}"
+    
     res = requests.get(url, headers=headers)
     if res.status_code == 200:
         data = res.json()
@@ -54,6 +57,8 @@ def fetch_user_data(username, token):
             "pp": stats.get("pp", 0),
             "mode": data.get("playmode", "osu")
         }
+    else:
+        print(f"Failed to fetch {identifier}: Status {res.status_code}")
     return None
 
 def load_font(size, bold=False):
@@ -84,7 +89,6 @@ def create_banner():
         print("No user data retrieved.")
         return
 
-    # Calculate canvas dimensions
     rows = (len(users_data) + COLS - 1) // COLS
     img_width = COLS * CARD_WIDTH + (COLS + 1) * PADDING
     img_height = HEADER_HEIGHT + rows * CARD_HEIGHT + (rows + 1) * PADDING
@@ -96,7 +100,6 @@ def create_banner():
     font_name = load_font(14, bold=True)
     font_sub = load_font(11, bold=False)
 
-    # Draw Header Title
     draw.text((PADDING, 18), "★ My OSU! Mutuals & Friends", fill=TEXT_MAIN, font=font_title)
 
     for index, user in enumerate(users_data):
@@ -106,10 +109,8 @@ def create_banner():
         x = PADDING + col * (CARD_WIDTH + PADDING)
         y = HEADER_HEIGHT + PADDING + row * (CARD_HEIGHT + PADDING)
 
-        # Draw Card Background
         draw.rounded_rectangle([x, y, x + CARD_WIDTH, y + CARD_HEIGHT], radius=8, fill=CARD_BG)
 
-        # Download & Paste Avatar
         avatar_img = None
         if user["avatar_url"]:
             try:
@@ -123,12 +124,10 @@ def create_banner():
         if avatar_img:
             canvas.paste(avatar_img, (x + 15, y + 15), avatar_img)
 
-        # Mode Indicator Stripe
         mode = user["mode"]
         mode_color = MODE_COLORS.get(mode, (255, 255, 255, 255))
         draw.rectangle([x, y + 15, x + 4, y + 75], fill=mode_color)
 
-        # Text Details
         text_x = x + 85
         draw.text((text_x, y + 16), user["username"], fill=TEXT_MAIN, font=font_name)
 
