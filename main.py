@@ -103,6 +103,10 @@ def create_banner():
         if user and user["mode"] in grouped_users:
             grouped_users[user["mode"]].append(user)
 
+    # Sort users in each mode by PP highest to lowest
+    for mode in grouped_users:
+        grouped_users[mode].sort(key=lambda u: u["pp"] if u["pp"] is not None else 0, reverse=True)
+
     # Filter out empty mode columns automatically
     active_modes = [m for m in ["osu", "mania", "taiko", "fruits"] if len(grouped_users[m]) > 0]
 
@@ -128,8 +132,8 @@ def create_banner():
     # Header Bar (#2e2938)
     draw.rounded_rectangle([PADDING, PADDING, img_width - PADDING, HEADER_HEIGHT - 10], radius=8, fill=BOX_BG)
     total_mutuals = sum(len(grouped_users[m]) for m in active_modes)
-    draw.text((PADDING + 16, PADDING + 12), "★ OSU! MUTUALS", fill=TEXT_MAIN, font=font_header)
-    draw.text((PADDING + 16, PADDING + 34), f"Active Friends: {total_mutuals}", fill=TEXT_MUTED, font=font_sub)
+    draw.text((PADDING + 16, PADDING + 12), f"Friends: ({total_mutuals})", fill=TEXT_MAIN, font=font_header)
+    draw.text((PADDING + 16, PADDING + 34), "DM for mutuals, let's be friends!", fill=TEXT_MUTED, font=font_sub)
 
     # Render Active Mode Columns
     for col_idx, mode_key in enumerate(active_modes):
@@ -181,4 +185,4 @@ def create_banner():
 
 if __name__ == "__main__":
     create_banner()
-    
+            
