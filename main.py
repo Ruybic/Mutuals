@@ -59,7 +59,7 @@ def fetch_user_data(identifier, token):
                 "avatar_url": data.get("avatar_url"),
                 "country_code": data.get("country_code", "XX"),
                 "global_rank": stats.get("global_rank"),
-                "pp": stats.get("pp", 0),
+                "pp": stats.get("pp", 0) or 0,
                 "mode": data.get("playmode", "osu")
             }
     except Exception as e:
@@ -103,9 +103,9 @@ def create_banner():
         if user and user["mode"] in grouped_users:
             grouped_users[user["mode"]].append(user)
 
-    # Sort each mode's users by PP from highest to lowest
-    for m in grouped_users:
-        grouped_users[m].sort(key=lambda u: u["pp"] if u["pp"] else 0, reverse=True)
+    # Sort each mode group by pp descending (highest to lowest)
+    for mode_key in grouped_users:
+        grouped_users[mode_key].sort(key=lambda u: u["pp"], reverse=True)
 
     # Filter out empty mode columns automatically
     active_modes = [m for m in ["osu", "mania", "taiko", "fruits"] if len(grouped_users[m]) > 0]
@@ -114,9 +114,6 @@ def create_banner():
         print("No players found in any mode.")
         return
 
-    total_mutuals = sum(len(grouped_users[m]) for m in active_modes)
-
-    # Determine canvas height based on the column with the most players
     max_players_in_col = max(len(grouped_users[m]) for m in active_modes)
     
     cols_count = len(active_modes)
@@ -131,7 +128,9 @@ def create_banner():
     font_name = load_font(11, bold=True)
     font_sub = load_font(9, bold=False)
 
-    # Header Bar (#2e2938)
+    total_mutuals = sum(len(grouped_users[m]) for m in active_modes)
+
+    # Header Bar
     draw.rounded_rectangle([PADDING, PADDING, img_width - PADDING, HEADER_HEIGHT - 10], radius=8, fill=BOX_BG)
     draw.text((PADDING + 16, PADDING + 12), f"Friends: ({total_mutuals})", fill=TEXT_MAIN, font=font_header)
     draw.text((PADDING + 16, PADDING + 34), "DM for mutuals, let's be friends!", fill=TEXT_MUTED, font=font_sub)
@@ -142,21 +141,17 @@ def create_banner():
         mode_info = MODE_CONFIG[mode_key]
         players = grouped_users[mode_key]
 
-        # Column Box Header Tag
         col_header_y = HEADER_HEIGHT + 5
         draw.rounded_rectangle([col_x, col_header_y, col_x + CARD_WIDTH, col_header_y + 24], radius=4, fill=BOX_BG)
         draw.rectangle([col_x, col_header_y + 2, col_x + 4, col_header_y + 22], fill=mode_info["color"])
         draw.text((col_x + 10, col_header_y + 5), f"{mode_info['title']} ({len(players)})", fill=mode_info["color"], font=font_mode_title)
 
-        # Render Tiny Player Cards
         for row_idx, user in enumerate(players):
             x = col_x
             y = col_header_y + 32 + row_idx * (CARD_HEIGHT + PADDING)
 
-            # Tiny Card Surface (#382e43)
             draw.rounded_rectangle([x, y, x + CARD_WIDTH, y + CARD_HEIGHT], radius=6, fill=CARD_BG)
 
-            # Avatar
             avatar_img = fetch_image(user["avatar_url"])
             if avatar_img:
                 avatar_img = avatar_img.resize((28, 28), Image.Resampling.LANCZOS)
@@ -164,11 +159,9 @@ def create_banner():
                 ImageDraw.Draw(mask).ellipse((0, 0, 28, 28), fill=255)
                 canvas.paste(avatar_img, (x + 5, y + 5), mask)
 
-            # Username
             text_x = x + 38
             draw.text((text_x, y + 4), user["username"], fill=TEXT_MAIN, font=font_name)
 
-            # Flag
             flag_img = fetch_image(f"https://flagcdn.com/w40/{user['country_code'].lower()}.png")
             info_x = text_x
             if flag_img:
@@ -176,7 +169,6 @@ def create_banner():
                 canvas.paste(flag_img, (info_x, y + 21), flag_img)
                 info_x += 16
 
-            # Rank & PP
             rank_str = f"#{user['global_rank']:,}" if user["global_rank"] else "Unranked"
             pp_str = f"{int(user['pp']):,}pp" if user["pp"] else "0pp"
             draw.text((info_x, y + 20), f"{rank_str} • {pp_str}", fill=TEXT_MUTED, font=font_sub)
