@@ -9,22 +9,24 @@ CLIENT_SECRET = os.getenv("OSU_CLIENT_SECRET")
 MUTUALS_RAW = os.getenv("MUTUALS", "") 
 MUTUALS = [m.strip() for m in MUTUALS_RAW.split(",") if m.strip()]
 
-# Layout Configuration
-COLS = 3
-CARD_WIDTH = 380
-CARD_HEIGHT = 90
-PADDING = 12
-HEADER_HEIGHT = 60
-BG_COLOR = (24, 20, 28, 255)         
-CARD_BG = (35, 30, 42, 255)           
-TEXT_MAIN = (255, 255, 255, 255)      
-TEXT_MUTED = (160, 150, 175, 255)     
+# Layout & Dimensions
+CARD_WIDTH = 210
+CARD_HEIGHT = 38
+PADDING = 10
+HEADER_HEIGHT = 65
 
-MODE_COLORS = {
-    "osu": (232, 91, 131, 255),       
-    "taiko": (235, 71, 71, 255),      
-    "fruits": (46, 189, 89, 255),     
-    "mania": (43, 141, 237, 255)      
+# osu! Official Dark Theme Colors
+BG_COLOR = (24, 20, 28, 255)            # Main background
+BOX_BG = (46, 41, 56, 255)             # Container box (#2e2938)
+CARD_BG = (56, 46, 67, 255)            # Card background (#382e43)
+TEXT_MAIN = (255, 255, 255, 255)       
+TEXT_MUTED = (175, 165, 190, 255)      
+
+MODE_CONFIG = {
+    "osu": {"title": "osu!", "color": (232, 91, 131, 255)},
+    "mania": {"title": "osu!mania", "color": (43, 141, 237, 255)},
+    "taiko": {"title": "osu!taiko", "color": (235, 71, 71, 255)},
+    "fruits": {"title": "osu!catch", "color": (46, 189, 89, 255)}
 }
 
 def get_osu_token():
@@ -35,30 +37,44 @@ def get_osu_token():
         "grant_type": "client_credentials",
         "scope": "public"
     }
-    response = requests.post(url, data=data)
-    return response.json().get("access_token")
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        return response.json().get("access_token")
+    except Exception as e:
+        print(f"Auth error: {e}")
+        return None
 
 def fetch_user_data(identifier, token):
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"}
-    
-    # osu! API v2 requires '@' prefix for username lookups
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     lookup_id = identifier if identifier.isdigit() else f"@{identifier}"
     url = f"https://osu.ppy.sh/api/v2/users/{lookup_id}"
     
-    res = requests.get(url, headers=headers)
-    if res.status_code == 200:
-        data = res.json()
-        stats = data.get("statistics", {})
-        return {
-            "username": data.get("username"),
-            "avatar_url": data.get("avatar_url"),
-            "country": data.get("country", {}).get("code", "XX"),
-            "global_rank": stats.get("global_rank"),
-            "pp": stats.get("pp", 0),
-            "mode": data.get("playmode", "osu")
-        }
-    else:
-        print(f"Failed to fetch {identifier}: Status {res.status_code}")
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            stats = data.get("statistics", {})
+            return {
+                "username": data.get("username"),
+                "avatar_url": data.get("avatar_url"),
+                "country_code": data.get("country_code", "XX"),
+                "global_rank": stats.get("global_rank"),
+                "pp": stats.get("pp", 0),
+                "mode": data.get("playmode", "osu")
+            }
+    except Exception as e:
+        print(f"Error fetching {identifier}: {e}")
+    return None
+
+def fetch_image(url):
+    if not url:
+        return None
+    try:
+        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        if res.status_code == 200:
+            return Image.open(io.BytesIO(res.content)).convert("RGBA")
+    except Exception:
+        pass
     return None
 
 def load_font(size, bold=False):
@@ -75,71 +91,94 @@ def create_banner():
 
     token = get_osu_token()
     if not token:
-        print("Failed to authenticate with osu! API.")
+        print("Failed to authenticate.")
         return
 
-    users_data = []
+    # Categorize users by mode
+    grouped_users = {"osu": [], "mania": [], "taiko": [], "fruits": []}
+    
     for username in MUTUALS:
         print(f"Fetching {username}...")
         user = fetch_user_data(username, token)
-        if user:
-            users_data.append(user)
+        if user and user["mode"] in grouped_users:
+            grouped_users[user["mode"]].append(user)
 
-    if not users_data:
-        print("No user data retrieved.")
+    # Filter out empty mode columns automatically
+    active_modes = [m for m in ["osu", "mania", "taiko", "fruits"] if len(grouped_users[m]) > 0]
+
+    if not active_modes:
+        print("No players found in any mode.")
         return
 
-    rows = (len(users_data) + COLS - 1) // COLS
-    img_width = COLS * CARD_WIDTH + (COLS + 1) * PADDING
-    img_height = HEADER_HEIGHT + rows * CARD_HEIGHT + (rows + 1) * PADDING
+    # Determine canvas height based on the column with the most players
+    max_players_in_col = max(len(grouped_users[m]) for m in active_modes)
+    
+    cols_count = len(active_modes)
+    img_width = cols_count * CARD_WIDTH + (cols_count + 1) * PADDING
+    img_height = HEADER_HEIGHT + (max_players_in_col * (CARD_HEIGHT + PADDING)) + PADDING + 40
 
     canvas = Image.new("RGBA", (img_width, img_height), BG_COLOR)
     draw = ImageDraw.Draw(canvas)
 
-    font_title = load_font(18, bold=True)
-    font_name = load_font(14, bold=True)
-    font_sub = load_font(11, bold=False)
+    font_header = load_font(18, bold=True)
+    font_mode_title = load_font(13, bold=True)
+    font_name = load_font(11, bold=True)
+    font_sub = load_font(9, bold=False)
 
-    draw.text((PADDING, 18), "★ My OSU! Mutuals & Friends", fill=TEXT_MAIN, font=font_title)
+    # Header Bar (#2e2938)
+    draw.rounded_rectangle([PADDING, PADDING, img_width - PADDING, HEADER_HEIGHT - 10], radius=8, fill=BOX_BG)
+    total_mutuals = sum(len(grouped_users[m]) for m in active_modes)
+    draw.text((PADDING + 16, PADDING + 12), "★ OSU! MUTUALS", fill=TEXT_MAIN, font=font_header)
+    draw.text((PADDING + 16, PADDING + 34), f"Active Friends: {total_mutuals}", fill=TEXT_MUTED, font=font_sub)
 
-    for index, user in enumerate(users_data):
-        col = index % COLS
-        row = index // COLS
+    # Render Active Mode Columns
+    for col_idx, mode_key in enumerate(active_modes):
+        col_x = PADDING + col_idx * (CARD_WIDTH + PADDING)
+        mode_info = MODE_CONFIG[mode_key]
+        players = grouped_users[mode_key]
 
-        x = PADDING + col * (CARD_WIDTH + PADDING)
-        y = HEADER_HEIGHT + PADDING + row * (CARD_HEIGHT + PADDING)
+        # Column Box Header Tag
+        col_header_y = HEADER_HEIGHT + 5
+        draw.rounded_rectangle([col_x, col_header_y, col_x + CARD_WIDTH, col_header_y + 24], radius=4, fill=BOX_BG)
+        draw.rectangle([col_x, col_header_y + 2, col_x + 4, col_header_y + 22], fill=mode_info["color"])
+        draw.text((col_x + 10, col_header_y + 5), f"{mode_info['title']} ({len(players)})", fill=mode_info["color"], font=font_mode_title)
 
-        draw.rounded_rectangle([x, y, x + CARD_WIDTH, y + CARD_HEIGHT], radius=8, fill=CARD_BG)
+        # Render Tiny Player Cards
+        for row_idx, user in enumerate(players):
+            x = col_x
+            y = col_header_y + 32 + row_idx * (CARD_HEIGHT + PADDING)
 
-        avatar_img = None
-        if user["avatar_url"]:
-            try:
-                avatar_res = requests.get(user["avatar_url"], timeout=5)
-                if avatar_res.status_code == 200:
-                    avatar_img = Image.open(io.BytesIO(avatar_res.content)).convert("RGBA")
-                    avatar_img = avatar_img.resize((60, 60), Image.Resampling.LANCZOS)
-            except Exception:
-                pass
+            # Tiny Card Surface (#382e43)
+            draw.rounded_rectangle([x, y, x + CARD_WIDTH, y + CARD_HEIGHT], radius=6, fill=CARD_BG)
 
-        if avatar_img:
-            canvas.paste(avatar_img, (x + 15, y + 15), avatar_img)
+            # Avatar
+            avatar_img = fetch_image(user["avatar_url"])
+            if avatar_img:
+                avatar_img = avatar_img.resize((28, 28), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (28, 28), 0)
+                ImageDraw.Draw(mask).ellipse((0, 0, 28, 28), fill=255)
+                canvas.paste(avatar_img, (x + 5, y + 5), mask)
 
-        mode = user["mode"]
-        mode_color = MODE_COLORS.get(mode, (255, 255, 255, 255))
-        draw.rectangle([x, y + 15, x + 4, y + 75], fill=mode_color)
+            # Username
+            text_x = x + 38
+            draw.text((text_x, y + 4), user["username"], fill=TEXT_MAIN, font=font_name)
 
-        text_x = x + 85
-        draw.text((text_x, y + 16), user["username"], fill=TEXT_MAIN, font=font_name)
+            # Flag
+            flag_img = fetch_image(f"https://flagcdn.com/w40/{user['country_code'].lower()}.png")
+            info_x = text_x
+            if flag_img:
+                flag_img = flag_img.resize((12, 8), Image.Resampling.LANCZOS)
+                canvas.paste(flag_img, (info_x, y + 21), flag_img)
+                info_x += 16
 
-        rank_str = f"#{user['global_rank']:,}" if user["global_rank"] else "Unranked"
-        pp_str = f"{int(user['pp']):,} pp" if user["pp"] else "0 pp"
-        details_str = f"{rank_str} • {pp_str} • [{user['country']}]"
-        
-        draw.text((text_x, y + 42), details_str, fill=TEXT_MUTED, font=font_sub)
-        draw.text((text_x, y + 60), f"Mode: {mode.capitalize()}", fill=mode_color, font=font_sub)
+            # Rank & PP
+            rank_str = f"#{user['global_rank']:,}" if user["global_rank"] else "Unranked"
+            pp_str = f"{int(user['pp']):,}pp" if user["pp"] else "0pp"
+            draw.text((info_x, y + 20), f"{rank_str} • {pp_str}", fill=TEXT_MUTED, font=font_sub)
 
     canvas.convert("RGB").save("mutuals.png", "PNG")
     print("mutuals.png generated successfully!")
 
 if __name__ == "__main__":
     create_banner()
+    
