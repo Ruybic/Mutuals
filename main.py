@@ -103,9 +103,9 @@ def create_banner():
         if user and user["mode"] in grouped_users:
             grouped_users[user["mode"]].append(user)
 
-    # Sort users in each mode by PP highest to lowest
-    for mode in grouped_users:
-        grouped_users[mode].sort(key=lambda u: u["pp"] if u["pp"] is not None else 0, reverse=True)
+    # Sort each mode's users by PP from highest to lowest
+    for m in grouped_users:
+        grouped_users[m].sort(key=lambda u: u["pp"] if u["pp"] else 0, reverse=True)
 
     # Filter out empty mode columns automatically
     active_modes = [m for m in ["osu", "mania", "taiko", "fruits"] if len(grouped_users[m]) > 0]
@@ -113,6 +113,8 @@ def create_banner():
     if not active_modes:
         print("No players found in any mode.")
         return
+
+    total_mutuals = sum(len(grouped_users[m]) for m in active_modes)
 
     # Determine canvas height based on the column with the most players
     max_players_in_col = max(len(grouped_users[m]) for m in active_modes)
@@ -131,7 +133,6 @@ def create_banner():
 
     # Header Bar (#2e2938)
     draw.rounded_rectangle([PADDING, PADDING, img_width - PADDING, HEADER_HEIGHT - 10], radius=8, fill=BOX_BG)
-    total_mutuals = sum(len(grouped_users[m]) for m in active_modes)
     draw.text((PADDING + 16, PADDING + 12), f"Friends: ({total_mutuals})", fill=TEXT_MAIN, font=font_header)
     draw.text((PADDING + 16, PADDING + 34), "DM for mutuals, let's be friends!", fill=TEXT_MUTED, font=font_sub)
 
@@ -185,4 +186,4 @@ def create_banner():
 
 if __name__ == "__main__":
     create_banner()
-        
+    
